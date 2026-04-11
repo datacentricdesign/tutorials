@@ -10,7 +10,7 @@ description: Data-Centred Design — Hands-on tutorials with Data Foundry
 baseurl: "/tutorials"
 url: "https://datacentricdesign.github.io"
 
-theme: just-the-docs
+remote_theme: just-the-docs/just-the-docs
 
 defaults:
   - scope:
@@ -66,5 +66,6 @@ readme_index:
 
 # Plugins
 plugins:
+  - jekyll-remote-theme
   - jekyll-seo-tag
   - jekyll-readme-index
