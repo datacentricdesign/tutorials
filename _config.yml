@@ -1,0 +1,70 @@
+sass:
+  quiet_deps: true
+  silence_deprecations: ["import", "global-builtin", "color-functions", "mixed-decls"]
+
+title: DCD Tutorials
+description: Data-Centred Design — Hands-on tutorials with Data Foundry
+
+# Update baseurl to match your GitHub repo name, e.g. /dcd-tutorials
+# Leave empty ("") if deploying to a custom domain or user/org pages site
+baseurl: "/tutorials"
+url: "https://datacentricdesign.github.io"
+
+theme: just-the-docs
+
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "default"
+
+# Search
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 2
+
+# Navigation
+nav_sort: case_insensitive
+heading_anchors: true
+
+# Footer
+footer_content: "Data-Centred Design for Connected Products course · <a href=\"https://studiegids.tudelft.nl/courses/study-guide/educations/12595\">Course Information</a>"
+
+# External links in nav
+nav_external_links:
+  - title: Data Foundry
+    url: https://data-foundry.net
+    hide_icon: false
+
+# Callout settings (for note/warning blocks)
+callouts_level: quiet
+callouts:
+  note:
+    title: Note
+    color: blue
+  tip:
+    title: Tip
+    color: green
+  warning:
+    title: Warning
+    color: yellow
+  reflect:
+    title: Reflect
+    color: purple
+
+# Back to top
+back_to_top: true
+back_to_top_text: "Back to top"
+
+readme_index:
+  enabled:          true
+  remove_originals: false
+  with_frontmatter: true
+  readme_pattern:   nil
+
+# Plugins
+plugins:
+  - jekyll-seo-tag
+  - jekyll-readme-index
