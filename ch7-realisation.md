@@ -14,5 +14,3 @@ These tutorials accompany **Chapter 7** of the DCD textbook. They cover the full
 | [T7.2](T7.2) | Connecting Sensors via MQTT to a Local Pipeline |
 | [T7.3](T7.3) | Building a Simulated Data Interface |
 | [T7.4](T7.4) | End-to-End Stack: Sensor → Data Foundry → Interface |
-| [T7.5](T7.5) | LLM-Assisted Data Interface Generation |
-| [T7.6](T7.6) | Visual Pipeline Design with Data Foundry Scripting |
