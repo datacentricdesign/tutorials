@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>eSense IMU — Sedentary Monitor</title>
+  <script src="oocsi-web.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      padding: 2rem;
+    }
+
+    h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+
+    .controls {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 0.5rem 1.25rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #btn-connect     { background: #2563eb; color: #fff; }
+    #btn-start       { background: #16a34a; color: #fff; }
+    #btn-stop        { background: #dc2626; color: #fff; }
+    #btn-disconnect  { background: #6b7280; color: #fff; }
+
+    .pill {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .pill.connected   { background: #dcfce7; color: #166534; }
+    .pill.streaming   { background: #dbeafe; color: #1e40af; }
+    .pill.error       { background: #fee2e2; color: #991b1b; }
+    .pill.oocsi-ok    { background: #fef9c3; color: #854d0e; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .card h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+      margin-bottom: 1rem;
+    }
+
+    .axes { display: flex; flex-direction: column; gap: 0.6rem; }
+
+    .axis-row {
+      display: grid;
+      grid-template-columns: 1.5rem 4.5rem 1fr;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .axis-label { font-weight: 600; font-size: 0.9rem; }
+    .axis-value { font-variant-numeric: tabular-nums; font-size: 0.88rem; text-align: right; }
+
+    .bar-track {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.05s;
+    }
+
+    .accel .bar-fill { background: #2563eb; }
+    .gyro  .bar-fill { background: #9333ea; }
+
+    /* Activity gauge */
+    .activity-gauge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+
+    .gauge-ring {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      border: 8px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.4s;
+      flex-shrink: 0;
+    }
+
+    .gauge-ring.still  { border-color: #93c5fd; }
+    .gauge-ring.low    { border-color: #6ee7b7; }
+    .gauge-ring.medium { border-color: #fcd34d; }
+    .gauge-ring.high   { border-color: #f87171; }
+
+    .gauge-value {
+      font-size: 1.2rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .gauge-label {
+      font-size: 0.85rem;
+      color: #6b7280;
+      text-align: center;
+    }
+
+    .gauge-state {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    /* OOCSI settings */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.5rem 0.75rem;
+      align-items: center;
+    }
+
+    .settings-grid label {
+      font-size: 0.82rem;
+      color: #6b7280;
+      white-space: nowrap;
+    }
+
+    .settings-grid input {
+      font-size: 0.85rem;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      padding: 0.3rem 0.5rem;
+      width: 100%;
+    }
+
+    .settings-grid input:focus {
+      outline: 2px solid #2563eb;
+      outline-offset: 1px;
+    }
+
+    #btn-oocsi-connect {
+      grid-column: 1 / -1;
+      margin-top: 0.25rem;
+      background: #d97706;
+      color: #fff;
+      padding: 0.4rem 1rem;
+      font-size: 0.85rem;
+    }
+
+    /* Meta grid */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .meta-item { font-size: 0.85rem; }
+    .meta-item .label { color: #9ca3af; font-size: 0.75rem; }
+    .meta-item .value { font-variant-numeric: tabular-nums; }
+
+    /* Log */
+    #log {
+      font-family: monospace;
+      font-size: 0.78rem;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      border-radius: 8px;
+      padding: 1rem;
+      height: 160px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+
+    #log .info { color: #9cdcfe; }
+    #log .ok   { color: #4ec9b0; }
+    #log .warn { color: #ce9178; }
+    #log .err  { color: #f44747; }
+  </style>
+</head>
+<body>
+
+<h1>eSense IMU — Sedentary Monitor</h1>
+<p class="subtitle">Streams windowed activity data to Data Foundry via OOCSI</p>
+
+<div class="controls">
+  <button id="btn-connect">Connect eSense</button>
+  <button id="btn-start"     disabled>Start sampling</button>
+  <button id="btn-stop"      disabled>Stop sampling</button>
+  <button id="btn-disconnect" disabled>Disconnect</button>
+  <span id="status" class="pill">Disconnected</span>
+  <span id="oocsi-status" class="pill">OOCSI: off</span>
+</div>
+
+<div class="grid">
+
+  <!-- Activity gauge -->
+  <div class="card">
+    <h2>Activity level</h2>
+    <div class="activity-gauge">
+      <div class="gauge-ring" id="gauge-ring">
+        <span class="gauge-value" id="gauge-value">—</span>
+      </div>
+      <span class="gauge-state" id="gauge-state">—</span>
+      <span class="gauge-label">std dev of accel magnitude<br>over last window (g)</span>
+    </div>
+  </div>
+
+  <!-- Accelerometer -->
+  <div class="card accel">
+    <h2>Accelerometer (g)</h2>
+    <div class="axes">
+      <div class="axis-row">
+        <span class="axis-label" style="color:#2563eb">X</span>
+        <span class="axis-value" id="ax">—</span>
+        <div class="bar-track"><div class="bar-fill" id="ax-bar" style="width:0%"></div></div>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label" style="color:#7c3aed">Y</span>
+        <span class="axis-value" id="ay">—</span>
+        <div class="bar-track"><div class="bar-fill" id="ay-bar" style="width:0%;background:#7c3aed"></div></div>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label" style="color:#0891b2">Z</span>
+        <span class="axis-value" id="az">—</span>
+        <div class="bar-track"><div class="bar-fill" id="az-bar" style="width:0%;background:#0891b2"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gyroscope -->
+  <div class="card gyro">
+    <h2>Gyroscope (deg/s)</h2>
+    <div class="axes">
+      <div class="axis-row">
+        <span class="axis-label" style="color:#9333ea">X</span>
+        <span class="axis-value" id="gx">—</span>
+        <div class="bar-track"><div class="bar-fill" id="gx-bar" style="width:0%"></div></div>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label" style="color:#c026d3">Y</span>
+        <span class="axis-value" id="gy">—</span>
+        <div class="bar-track"><div class="bar-fill" id="gy-bar" style="width:0%;background:#c026d3"></div></div>
+      </div>
+      <div class="axis-row">
+        <span class="axis-label" style="color:#7c3aed">Z</span>
+        <span class="axis-value" id="gz">—</span>
+        <div class="bar-track"><div class="bar-fill" id="gz-bar" style="width:0%;background:#7c3aed"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OOCSI settings -->
+  <div class="card">
+    <h2>OOCSI / Data Foundry</h2>
+    <div class="settings-grid">
+      <label for="oocsi-channel">Channel</label>
+      <input id="oocsi-channel" type="text" placeholder="your-dataset-channel">
+
+      <label for="oocsi-client">Client name</label>
+      <input id="oocsi-client" type="text" placeholder="esense_client_01">
+
+      <label for="oocsi-activity">Activity label</label>
+      <input id="oocsi-activity" type="text" placeholder="TEST">
+
+      <label for="window-size">Window (s)</label>
+      <input id="window-size" type="number" value="2" min="1" max="10">
+
+      <button id="btn-oocsi-connect">Connect OOCSI</button>
+    </div>
+  </div>
+
+  <!-- Session info -->
+  <div class="card">
+    <h2>Session info</h2>
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="label">Device</div>
+        <div class="value" id="meta-device">—</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Sample rate</div>
+        <div class="value" id="meta-rate">—</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Packets received</div>
+        <div class="value" id="meta-packets">0</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Dropped packets</div>
+        <div class="value" id="meta-dropped">0</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Windows sent</div>
+        <div class="value" id="meta-windows">0</div>
+      </div>
+      <div class="meta-item">
+        <div class="label">Last activity</div>
+        <div class="value" id="meta-activity">—</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="log"></div>
+
+<script>
+  // ── BLE UUIDs ──────────────────────────────────────────────────────────────
+  const SERVICE_UUID  = '0000ff06-0000-1000-8000-00805f9b34fb';
+  const CHAR_CMD_UUID = '0000ff07-0000-1000-8000-00805f9b34fb';
+  const CHAR_IMU_UUID = '0000ff08-0000-1000-8000-00805f9b34fb';
+
+  // ── Default scale factors (±4 g / ±500 deg/s) ─────────────────────────────
+  const ACC_SCALE  = 8192;
+  const GYRO_SCALE = 65.5;
+
+  // ── BLE state ──────────────────────────────────────────────────────────────
+  let device, server, cmdChar, imuChar;
+  let packetCount    = 0;
+  let droppedCount   = 0;
+  let lastPacketIndex = null;
+  const sampleRate   = 50; // Hz
+
+  // ── Window / aggregation state ─────────────────────────────────────────────
+  let windowBuffer   = [];   // [{ax,ay,az,gx,gy,gz}, ...]
+  let windowCount    = 0;
+  let windowTimer    = null;
+
+  // ── OOCSI state ────────────────────────────────────────────────────────────
+  let oocsiReady     = false;
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+
+  function setStatus(text, cls = '') {
+    const el = $('status');
+    el.textContent = text;
+    el.className = 'pill ' + cls;
+  }
+
+  function setOocsiStatus(text, cls = '') {
+    const el = $('oocsi-status');
+    el.textContent = 'OOCSI: ' + text;
+    el.className = 'pill ' + cls;
+  }
+
+  function log(msg, cls = 'info') {
+    const el = $('log');
+    const line = document.createElement('div');
+    line.className = cls;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function updateButtons(state) {
+    $('btn-connect').disabled    = state !== 'disconnected';
+    $('btn-start').disabled      = state !== 'connected';
+    $('btn-stop').disabled       = state !== 'streaming';
+    $('btn-disconnect').disabled = state === 'disconnected';
+  }
+
+  function bar(pct) {
+    return Math.min(100, Math.max(0, Math.abs(pct)));
+  }
+
+  // ── Activity gauge ─────────────────────────────────────────────────────────
+  // Thresholds (std dev of accel magnitude in g) — tune after first calibration
+  const THRESH_LOW    = 0.01;
+  const THRESH_MEDIUM = 0.05;
+  const THRESH_HIGH   = 0.15;
+
+  function updateGauge(activity) {
+    $('gauge-value').textContent = activity.toFixed(4);
+    $('meta-activity').textContent = activity.toFixed(4);
+
+    let cls, label;
+    if      (activity < THRESH_LOW)    { cls = 'still';  label = 'Still'; }
+    else if (activity < THRESH_MEDIUM) { cls = 'low';    label = 'Low activity'; }
+    else if (activity < THRESH_HIGH)   { cls = 'medium'; label = 'Medium activity'; }
+    else                               { cls = 'high';   label = 'High activity'; }
+
+    $('gauge-ring').className = 'gauge-ring ' + cls;
+    $('gauge-state').textContent = label;
+  }
+
+  // ── Live IMU display (per-packet) ──────────────────────────────────────────
+  function updateIMUDisplay(gx, gy, gz, ax, ay, az) {
+    $('ax').textContent = ax.toFixed(3);
+    $('ay').textContent = ay.toFixed(3);
+    $('az').textContent = az.toFixed(3);
+    $('ax-bar').style.width = bar((ax / 4) * 100) + '%';
+    $('ay-bar').style.width = bar((ay / 4) * 100) + '%';
+    $('az-bar').style.width = bar((az / 4) * 100) + '%';
+
+    $('gx').textContent = gx.toFixed(1);
+    $('gy').textContent = gy.toFixed(1);
+    $('gz').textContent = gz.toFixed(1);
+    $('gx-bar').style.width = bar((gx / 500) * 100) + '%';
+    $('gy-bar').style.width = bar((gy / 500) * 100) + '%';
+    $('gz-bar').style.width = bar((gz / 500) * 100) + '%';
+  }
+
+  // ── Windowed aggregation ───────────────────────────────────────────────────
+  //
+  // Called once per window interval. Computes:
+  //   activity  — std dev of accel magnitude (gravity-invariant motion metric)
+  //   acc_x|y|z — mean acceleration per axis
+  //   gyro_x|y|z — mean rotation rate per axis
+  //   samples   — number of packets received in this window (gap detection)
+  //
+  function flushWindow() {
+    if (windowBuffer.length === 0) return;
+
+    const n = windowBuffer.length;
+
+    // Per-axis means
+    const mean = (key) => windowBuffer.reduce((s, d) => s + d[key], 0) / n;
+    const ax = mean('ax'), ay = mean('ay'), az = mean('az');
+    const gx = mean('gx'), gy = mean('gy'), gz = mean('gz');
+
+    // Std dev of accel magnitude (removes gravity DC offset)
+    const magnitudes = windowBuffer.map(d =>
+      Math.sqrt(d.ax * d.ax + d.ay * d.ay + d.az * d.az)
+    );
+    const magMean = magnitudes.reduce((s, v) => s + v, 0) / n;
+    const activity = Math.sqrt(
+      magnitudes.reduce((s, v) => s + (v - magMean) ** 2, 0) / n
+    );
+
+    windowBuffer = [];
+    windowCount++;
+    $('meta-windows').textContent = windowCount;
+    updateGauge(activity);
+
+    const payload = {
+      device_id:      device ? device.name : 'unknown',
+      activity:       $('oocsi-activity').value.trim() || 'TEST',
+      activity_score: +activity.toFixed(5),
+      acc_x:          +ax.toFixed(4),
+      acc_y:          +ay.toFixed(4),
+      acc_z:          +az.toFixed(4),
+      gyro_x:         +gx.toFixed(3),
+      gyro_y:         +gy.toFixed(3),
+      gyro_z:         +gz.toFixed(3),
+      samples:        n,
+    };
+
+    sendOocsi(payload);
+  }
+
+  // ── Packet parser ──────────────────────────────────────────────────────────
+  function parseIMUPacket(dataView) {
+    if (dataView.byteLength < 16) return null;
+
+    const cmdHead   = dataView.getUint8(0);
+    const packetIdx = dataView.getUint8(1);
+    if (cmdHead !== 0x55) return null;
+
+    if (lastPacketIndex !== null) {
+      const expected = (lastPacketIndex + 1) % 256;
+      if (packetIdx !== expected) {
+        const dropped = (packetIdx - expected + 256) % 256;
+        droppedCount += dropped;
+        $('meta-dropped').textContent = droppedCount;
+        log(`Dropped ~${dropped} packet(s) (${lastPacketIndex} → ${packetIdx})`, 'warn');
+      }
+    }
+    lastPacketIndex = packetIdx;
+
+    return {
+      packetIdx,
+      gx: dataView.getInt16(4,  false) / GYRO_SCALE,
+      gy: dataView.getInt16(6,  false) / GYRO_SCALE,
+      gz: dataView.getInt16(8,  false) / GYRO_SCALE,
+      ax: dataView.getInt16(10, false) / ACC_SCALE,
+      ay: dataView.getInt16(12, false) / ACC_SCALE,
+      az: dataView.getInt16(14, false) / ACC_SCALE,
+    };
+  }
+
+  function onIMUNotification(event) {
+    const d = parseIMUPacket(event.target.value);
+    if (!d) return;
+
+    packetCount++;
+    $('meta-packets').textContent = packetCount;
+    updateIMUDisplay(d.gx, d.gy, d.gz, d.ax, d.ay, d.az);
+
+    windowBuffer.push({ ax: d.ax, ay: d.ay, az: d.az,
+                        gx: d.gx, gy: d.gy, gz: d.gz });
+  }
+
+  // ── BLE commands ───────────────────────────────────────────────────────────
+  function buildStartCmd(hz) {
+    const rate = Math.min(100, Math.max(1, hz));
+    const checksum = (0x02 + 0x01 + rate) & 0xFF;
+    return new Uint8Array([0x53, checksum, 0x02, 0x01, rate]);
+  }
+  const STOP_CMD = new Uint8Array([0x53, 0x02, 0x02, 0x00, 0x00]);
+
+  // ── OOCSI ─────────────────────────────────────────────────────────────────
+  //
+  // Uses the OOCSI WebSocket library (oocsi-web.min.js).
+  // OOCSI.connect(serverUrl, clientName, messageHandler) establishes the
+  // connection and automatically handles reconnection.
+  // OOCSI.send(channel, data) delivers a JSON object to a named channel.
+  //
+  $('btn-oocsi-connect').addEventListener('click', () => {
+    const channel = $('oocsi-channel').value.trim();
+    const client  = $('oocsi-client').value.trim() || 'esense_client_' + Math.floor(Math.random() * 9000 + 1000);
+
+    if (!channel) {
+      log('Please enter a Data Foundry channel name.', 'warn');
+      return;
+    }
+
+    log(`Connecting to OOCSI as "${client}"…`);
+    setOocsiStatus('connecting…');
+
+    OOCSI.connect(
+      'wss://oocsi.id.tue.nl/ws',
+      client,
+      () => {
+        // Called when a message arrives on the client's own channel (not used here)
+      }
+    );
+
+    // The library connects asynchronously; poll isConnected to update the badge.
+    const pollInterval = setInterval(() => {
+      if (OOCSI.isConnected()) {
+        clearInterval(pollInterval);
+        oocsiReady = true;
+        setOocsiStatus('connected', 'oocsi-ok');
+        log(`OOCSI connected as "${client}" → channel "${channel}"`, 'ok');
+      }
+    }, 200);
+  });
+
+  function sendOocsi(data) {
+    const channel = $('oocsi-channel').value.trim();
+    if (!oocsiReady || !OOCSI.isConnected() || !channel) return;
+
+    OOCSI.send(channel, data);
+    log(`→ OOCSI  activity_score=${data.activity_score}  activity=${data.activity}  samples=${data.samples}`, 'ok');
+  }
+
+  // ── BLE connect ────────────────────────────────────────────────────────────
+  $('btn-connect').addEventListener('click', async () => {
+    if (!navigator.bluetooth) {
+      log('Web Bluetooth is not supported in this browser.', 'err');
+      setStatus('Not supported', 'error');
+      return;
+    }
+    try {
+      log('Requesting Bluetooth device…');
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'eSense', services: [SERVICE_UUID] }],
+        optionalServices: [SERVICE_UUID],
+      });
+
+      device.addEventListener('gattserverdisconnected', onDisconnected);
+
+      log(`Connecting to "${device.name}"…`);
+      server = await device.gatt.connect();
+
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      cmdChar = await service.getCharacteristic(CHAR_CMD_UUID);
+      imuChar = await service.getCharacteristic(CHAR_IMU_UUID);
+
+      $('meta-device').textContent = device.name;
+      $('meta-rate').textContent   = `${sampleRate} Hz`;
+      setStatus('Connected', 'connected');
+      updateButtons('connected');
+      log(`Connected to ${device.name}`, 'ok');
+
+    } catch (err) {
+      log(`Connection failed: ${err.message}`, 'err');
+      setStatus('Error', 'error');
+    }
+  });
+
+  // ── Start sampling ─────────────────────────────────────────────────────────
+  $('btn-start').addEventListener('click', async () => {
+    const windowSec = Math.max(1, parseInt($('window-size').value, 10) || 2);
+
+    try {
+      await imuChar.startNotifications();
+      imuChar.addEventListener('characteristicvaluechanged', onIMUNotification);
+      await cmdChar.writeValue(buildStartCmd(sampleRate));
+
+      packetCount = droppedCount = windowCount = 0;
+      lastPacketIndex = null;
+      windowBuffer = [];
+      $('meta-packets').textContent = 0;
+      $('meta-dropped').textContent = 0;
+      $('meta-windows').textContent = 0;
+
+      // Flush aggregated window every N seconds
+      windowTimer = setInterval(flushWindow, windowSec * 1000);
+
+      setStatus(`Streaming @ ${sampleRate} Hz`, 'streaming');
+      updateButtons('streaming');
+      log(`Streaming started. Window: ${windowSec}s.`, 'ok');
+
+    } catch (err) {
+      log(`Start failed: ${err.message}`, 'err');
+    }
+  });
+
+  // ── Stop sampling ──────────────────────────────────────────────────────────
+  $('btn-stop').addEventListener('click', async () => {
+    try {
+      clearInterval(windowTimer);
+      flushWindow(); // send whatever's left in the buffer
+
+      await cmdChar.writeValue(STOP_CMD);
+      await imuChar.stopNotifications();
+      imuChar.removeEventListener('characteristicvaluechanged', onIMUNotification);
+
+      setStatus('Connected', 'connected');
+      updateButtons('connected');
+      log(`Stopped. ${packetCount} packets, ${windowCount} windows sent, ${droppedCount} dropped.`, 'ok');
+
+    } catch (err) {
+      log(`Stop failed: ${err.message}`, 'err');
+    }
+  });
+
+  // ── Disconnect ─────────────────────────────────────────────────────────────
+  $('btn-disconnect').addEventListener('click', () => {
+    if (device && device.gatt.connected) device.gatt.disconnect();
+  });
+
+  function onDisconnected() {
+    clearInterval(windowTimer);
+    setStatus('Disconnected');
+    updateButtons('disconnected');
+    log('Device disconnected.', 'warn');
+    $('meta-device').textContent = '—';
+    $('meta-rate').textContent   = '—';
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  updateButtons('disconnected');
+  log('Ready. Connect your eSense earbud, then configure OOCSI.');
+</script>
+</body>
+</html>
