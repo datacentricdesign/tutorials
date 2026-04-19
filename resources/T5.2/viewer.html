@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>T5.2 · Multimodal Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      background: #f0f2f5;
+      color: #2c3e50;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────── */
+    header {
+      flex: 0 0 auto;
+      background: #1a2535;
+      color: #fff;
+      padding: 0 16px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header h1 { font-size: 15px; font-weight: 600; white-space: nowrap; }
+
+    .open-btn {
+      padding: 5px 14px;
+      background: #3d6fa5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .open-btn:hover { background: #4d7fb5; }
+
+    #rideSelectWrap {
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    #rideSelectWrap label { font-size: 12px; opacity: .7; }
+    #rideSelect {
+      background: #253245;
+      color: #fff;
+      border: 1px solid #3d6fa5;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    #currentRideLabel {
+      font-size: 12px;
+      opacity: .6;
+      margin-left: 4px;
+    }
+
+    /* ── View toggle ─────────────────────────────────────────────────────── */
+    #viewToggle {
+      display: none;
+      margin-left: auto;
+      background: #253245;
+      border: 1px solid #3d6fa5;
+      border-radius: 4px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    #viewToggle button {
+      padding: 4px 12px;
+      background: none;
+      border: none;
+      color: #8fa8c8;
+      font-size: 12px;
+      cursor: pointer;
+      border-right: 1px solid #3d6fa5;
+    }
+    #viewToggle button:last-child { border-right: none; }
+    #viewToggle button.active {
+      background: #3d6fa5;
+      color: #fff;
+    }
+    #viewToggle button:not(.active):hover { background: #2e3f55; color: #fff; }
+
+    /* ── Welcome / loading ───────────────────────────────────────────────── */
+    #welcome, #loadingMsg {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: #555;
+      padding: 40px;
+      text-align: center;
+    }
+    #welcome h2 { font-size: 18px; color: #2c3e50; }
+    #welcome p  { max-width: 460px; line-height: 1.65; }
+    #welcome code { background: #e8ecf1; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+    .notice {
+      margin-top: 12px;
+      padding: 8px 16px;
+      background: #fff8e1;
+      border-left: 3px solid #f0a500;
+      border-radius: 4px;
+      font-size: 12px;
+      max-width: 440px;
+      text-align: left;
+      line-height: 1.5;
+    }
+    #loadingMsg { display: none; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #ddd;
+      border-top-color: #3d6fa5;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Main app ────────────────────────────────────────────────────────── */
+    #app {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      flex-direction: row;
+      overflow: hidden;
+    }
+    #app.visible { display: flex; }
+
+    /* ── Left panel ──────────────────────────────────────────────────────── */
+    .left-panel {
+      flex: 0 0 56%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid #d0d7e2;
+      background: #fff;
+    }
+
+    #videoWrapper { background: #000; flex: 0 0 auto; }
+    #videoEl      { width: 100%; display: block; }
+
+    /* Context card */
+    .context-card {
+      flex: 0 0 auto;
+      margin: 10px 12px 0;
+      padding: 10px 14px;
+      background: #eef3fb;
+      border-left: 3px solid #3d6fa5;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.65;
+    }
+    .context-card h4 { font-size: 11px; font-weight: 700; color: #3d6fa5; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .context-card pre { white-space: pre-wrap; font-family: inherit; }
+
+    /* ── Tabs ────────────────────────────────────────────────────────────── */
+    .tab-bar {
+      flex: 0 0 auto;
+      display: flex;
+      border-bottom: 2px solid #e8ecf1;
+      margin-top: 8px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 8px 0;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      cursor: pointer;
+      letter-spacing: .3px;
+      transition: color .15s, border-color .15s;
+    }
+    .tab-btn:hover { color: #2c3e50; }
+    .tab-btn.active { color: #3d6fa5; border-bottom-color: #3d6fa5; }
+    .tab-btn.active-clips { color: #8e44ad; border-bottom-color: #8e44ad; }
+
+    .tab-panel {
+      display: none;
+      flex: 1;
+      flex-direction: column;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .tab-panel.active { display: flex; }
+
+    /* ── Shared form styles ──────────────────────────────────────────────── */
+    .annot-form-section,
+    .clip-form-section {
+      flex: 0 0 auto;
+      padding: 12px;
+      border-bottom: 1px solid #e8ecf1;
+    }
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #2c3e50;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-bottom: 10px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 6px 10px;
+      margin-bottom: 7px;
+      align-items: start;
+    }
+    .form-row label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #555;
+      padding-top: 6px;
+    }
+    .form-row .hint {
+      font-size: 11px;
+      color: #e74c3c;
+      margin-top: 3px;
+      display: block;
+      font-style: italic;
+    }
+
+    input[type="number"], input[type="text"], select, textarea {
+      width: 100%;
+      padding: 5px 8px;
+      border: 1px solid #ccd2dc;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: inherit;
+      background: #fafbfc;
+    }
+    input[type="number"]:focus, input[type="text"]:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #3d6fa5;
+      background: #fff;
+    }
+    textarea { resize: vertical; }
+
+    .ts-row { display: flex; gap: 6px; align-items: center; }
+    .ts-row input[type="number"] { width: 80px; flex: 0 0 80px; }
+
+    .add-annot-btn {
+      margin-top: 10px;
+      padding: 6px 18px;
+      background: #3d6fa5;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .add-annot-btn:hover { background: #4d7fb5; }
+    .add-annot-btn:disabled { background: #aaa; cursor: default; }
+
+    /* ── Annotation list ─────────────────────────────────────────────────── */
+    .annot-list-section {
+      flex: 1 1 auto;
+      padding: 12px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .annot-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .export-btn {
+      padding: 4px 12px;
+      background: #27ae60;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .export-btn:hover { background: #219a52; }
+
+    .annot-item {
+      padding: 8px 10px;
+      background: #fafbfc;
+      border: 1px solid #e0e6ef;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      position: relative;
+    }
+    .annot-meta {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 4px;
+      display: flex;
+      gap: 8px;
+    }
+    .annot-seek {
+      cursor: pointer;
+      color: #3d6fa5;
+      text-decoration: underline;
+      background: none;
+      border: none;
+      font-size: 11px;
+      padding: 0;
+    }
+    .annot-desc   { color: #2c3e50; margin-bottom: 3px; }
+    .annot-interp { color: #3d6fa5; font-style: italic; margin-bottom: 3px; }
+    .annot-gap    { color: #e74c3c; font-style: italic; }
+    .annot-label  { font-weight: 600; }
+    .annot-empty  { color: #aaa; font-style: italic; font-size: 12px; }
+
+    #annotRideSummary {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .ride-chip {
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e8ecf1;
+      color: #555;
+    }
+    .ride-chip.current {
+      background: #3d6fa5;
+      color: #fff;
+    }
+    .annot-item.other-ride { opacity: .45; }
+
+    .delete-btn {
+      position: absolute;
+      top: 6px;
+      right: 8px;
+      background: none;
+      border: none;
+      color: #bbb;
+      font-size: 14px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 2px;
+    }
+    .delete-btn:hover { color: #e74c3c; }
+
+    /* ── Clip list ───────────────────────────────────────────────────────── */
+    .clip-list-section {
+      flex: 1 1 auto;
+      padding: 12px;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    .set-time-btn {
+      flex-shrink: 0;
+      padding: 4px 10px;
+      background: #7f8c8d;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .set-time-btn:hover { background: #95a5a6; }
+
+    .export-pdf-btn {
+      padding: 4px 12px;
+      background: #8e44ad;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .export-pdf-btn:hover { background: #9b59b6; }
+    .export-pdf-btn:disabled { background: #bbb; cursor: default; }
+
+    .clip-item {
+      padding: 8px 10px;
+      background: #fafbfc;
+      border: 1px solid #d9c8e8;
+      border-left: 3px solid #8e44ad;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 12px;
+      position: relative;
+    }
+    .clip-name { font-weight: 600; color: #2c3e50; margin-bottom: 3px; }
+    .clip-meta {
+      font-size: 11px;
+      color: #888;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .clip-item.other-ride { opacity: .65; }
+    .clip-thumb {
+      width: 80px;
+      height: 45px;
+      object-fit: cover;
+      border-radius: 3px;
+      border: 1px solid #d0d0d0;
+      flex-shrink: 0;
+      display: block;
+      margin-top: 5px;
+    }
+
+    /* ── Right panel: charts ─────────────────────────────────────────────── */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #fff;
+      padding: 8px 10px;
+      gap: 8px;
+    }
+
+    .chart-block {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .chart-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 2px;
+    }
+    .chart-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    .chart-hint {
+      font-size: 10px;
+      color: #aaa;
+      font-style: italic;
+    }
+    .chart-canvas-wrap {
+      flex: 1;
+      min-height: 0;
+      position: relative;
+    }
+    .chart-canvas-wrap canvas { position: absolute; inset: 0; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <h1>T5.2 · Multimodal Viewer</h1>
+  <button class="open-btn" id="openBtn">Open folder</button>
+  <span id="rideSelectWrap">
+    <label for="rideSelect">Activity:</label>
+    <select id="rideSelect"></select>
+  </span>
+  <span id="currentRideLabel"></span>
+  <div id="viewToggle">
+    <button data-view="video" title="Step 1 — watch without telemetry">Video only</button>
+    <button data-view="both" class="active">Both</button>
+    <button data-view="telemetry">Telemetry only</button>
+  </div>
+</header>
+
+<!-- ── Welcome screen ──────────────────────────────────────────────────────── -->
+<div id="welcome">
+  <h2>Multimodal Viewer</h2>
+  <p>Load an activity folder to watch the video and explore accelerometer and gyroscope telemetry on a shared, synchronised timeline.</p>
+  <p>Click <strong>Open folder</strong> and select either a single activity folder (containing <code>video.mp4</code> + <code>telemetry.csv</code>) or a parent folder to browse all activities.</p>
+  <div class="notice">
+    <strong>Browser requirement:</strong> This viewer uses the File System Access API to read local files without a server. It requires <strong>Chrome or Edge</strong>. Firefox and Safari are not supported.
+  </div>
+</div>
+
+<!-- ── Loading ─────────────────────────────────────────────────────────────── -->
+<div id="loadingMsg">
+  <div class="spinner"></div>
+  <span>Loading data…</span>
+</div>
+
+<!-- ── Main app ────────────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- Left panel -->
+  <div class="left-panel">
+
+    <div id="videoWrapper">
+      <video id="videoEl" controls></video>
+    </div>
+
+    <div id="contextCard" class="context-card" style="display:none;">
+      <h4>Context</h4>
+      <pre id="contextText"></pre>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="annotate">Annotate</button>
+      <button class="tab-btn" data-tab="clips">Clips — thematic compilation</button>
+    </div>
+
+    <!-- Tab: Annotate -->
+    <div class="tab-panel active" id="tabAnnotate">
+
+      <div class="annot-form-section">
+        <div class="section-title">Add annotation</div>
+
+        <div class="form-row">
+          <label>Timestamp</label>
+          <div class="ts-row">
+            <input type="number" id="annotTs" step="0.1" min="0" value="0">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>Signal</label>
+          <select id="annotSignal">
+            <option value="">— both modalities —</option>
+            <option value="acc_x">Accelerometer X</option>
+            <option value="acc_y">Accelerometer Y</option>
+            <option value="acc_z">Accelerometer Z</option>
+            <option value="gyro_x">Gyroscope X</option>
+            <option value="gyro_y">Gyroscope Y</option>
+            <option value="gyro_z">Gyroscope Z</option>
+            <option value="video">Video only</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label>Description</label>
+          <textarea id="annotDesc" rows="2" placeholder="What is happening — descriptive, not interpretive"></textarea>
+        </div>
+
+        <div class="form-row">
+          <label>Interpretation</label>
+          <textarea id="annotInterp" rows="2" placeholder="What this might mean for a design question"></textarea>
+        </div>
+
+        <div class="form-row">
+          <label>Gap</label>
+          <div>
+            <textarea id="annotGap" rows="2" placeholder="What neither the video nor the sensor can tell you"></textarea>
+            <span class="hint">Document what the data cannot answer — the most important field.</span>
+          </div>
+        </div>
+
+        <button class="add-annot-btn" id="addAnnotBtn">Add annotation</button>
+      </div>
+
+      <div class="annot-list-section">
+        <div class="annot-list-header">
+          <div class="section-title">Annotations (<span id="annotCount">0</span>)</div>
+          <button class="export-btn" id="exportBtn">Export CSV</button>
+        </div>
+        <div id="annotRideSummary"></div>
+        <div id="annotList">
+          <p class="annot-empty">No annotations yet. Add one above.</p>
+        </div>
+      </div>
+
+    </div><!-- /tabAnnotate -->
+
+    <!-- Tab: Clips -->
+    <div class="tab-panel" id="tabClips">
+
+      <div class="clip-form-section">
+        <div class="section-title">Add clip</div>
+
+        <div class="form-row">
+          <label>Name</label>
+          <input type="text" id="clipName" placeholder="e.g. Sharp deceleration at junction">
+        </div>
+
+        <div class="form-row">
+          <label>Start (s)</label>
+          <div class="ts-row">
+            <input type="number" id="clipStart" step="0.1" min="0" value="0">
+            <button class="set-time-btn" id="setClipStartBtn">Set to current</button>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>End (s)</label>
+          <div class="ts-row">
+            <input type="number" id="clipEnd" step="0.1" min="0" value="0">
+            <button class="set-time-btn" id="setClipEndBtn">Set to current</button>
+          </div>
+        </div>
+
+        <button class="add-annot-btn" id="addClipBtn">Add clip</button>
+      </div>
+
+      <div class="clip-list-section">
+        <div class="annot-list-header">
+          <div class="section-title">Compilation (<span id="clipCount">0</span>)</div>
+          <button class="export-pdf-btn" id="exportPdfBtn">Export PDF</button>
+        </div>
+        <div id="clipList">
+          <p class="annot-empty">No clips yet. Select a timeframe above and add a clip.</p>
+        </div>
+      </div>
+
+    </div><!-- /tabClips -->
+
+  </div><!-- /left-panel -->
+
+  <!-- Right panel: charts -->
+  <div class="right-panel">
+
+    <div class="chart-block">
+      <div class="chart-top">
+        <span class="chart-title">Accelerometer (m/s²)</span>
+        <span class="chart-hint">Click to seek video · red cursor = current position</span>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="accelCanvas"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-top">
+        <span class="chart-title">Gyroscope (rad/s)</span>
+        <span class="chart-hint">Click to seek video</span>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="gyroCanvas"></canvas>
+      </div>
+    </div>
+
+  </div><!-- /right-panel -->
+
+</div><!-- /app -->
+
+
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────────
+let rideHandles          = {};   // rideName → FileSystemDirectoryHandle
+let currentRide          = '';
+let accelChart           = null;
+let gyroChart            = null;
+let annotations          = [];
+let clips                = [];
+let telemetryByActivity  = {};   // rideName → normalised sample array (for PDF)
+let blobUrl              = null;
+let rafPending           = false;
+
+// ── DOM ──────────────────────────────────────────────────────────────────────
+const openBtn          = document.getElementById('openBtn');
+const rideSelectWrap   = document.getElementById('rideSelectWrap');
+const rideSelectEl     = document.getElementById('rideSelect');
+const currentRideLabel = document.getElementById('currentRideLabel');
+const welcomeEl        = document.getElementById('welcome');
+const loadingEl        = document.getElementById('loadingMsg');
+const appEl            = document.getElementById('app');
+const videoEl          = document.getElementById('videoEl');
+const contextCard      = document.getElementById('contextCard');
+const contextTextEl    = document.getElementById('contextText');
+const annotTsEl        = document.getElementById('annotTs');
+const annotSignalEl    = document.getElementById('annotSignal');
+const annotDescEl      = document.getElementById('annotDesc');
+const annotInterpEl    = document.getElementById('annotInterp');
+const annotGapEl       = document.getElementById('annotGap');
+const addAnnotBtn      = document.getElementById('addAnnotBtn');
+const annotListEl         = document.getElementById('annotList');
+const annotCountEl        = document.getElementById('annotCount');
+const annotRideSummaryEl  = document.getElementById('annotRideSummary');
+const exportBtn        = document.getElementById('exportBtn');
+const viewToggleEl     = document.getElementById('viewToggle');
+const accelCanvas      = document.getElementById('accelCanvas');
+const gyroCanvas       = document.getElementById('gyroCanvas');
+// Clip elements
+const clipNameEl       = document.getElementById('clipName');
+const clipStartEl      = document.getElementById('clipStart');
+const clipEndEl        = document.getElementById('clipEnd');
+const setClipStartBtn  = document.getElementById('setClipStartBtn');
+const setClipEndBtn    = document.getElementById('setClipEndBtn');
+const addClipBtn       = document.getElementById('addClipBtn');
+const clipListEl       = document.getElementById('clipList');
+const clipCountEl      = document.getElementById('clipCount');
+const exportPdfBtn     = document.getElementById('exportPdfBtn');
+
+// ── Chart.js vertical-line plugin ────────────────────────────────────────────
+const verticalLinePlugin = {
+  id: 'verticalLine',
+  afterDraw(chart) {
+    const t = chart.options.plugins.verticalLine?.x;
+    if (t == null) return;
+    const xScale = chart.scales.x;
+    if (!xScale) return;
+    const xPx = xScale.getPixelForValue(t);
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(xPx, top);
+    ctx.lineTo(xPx, bottom);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(192, 57, 43, 0.9)';
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+Chart.register(verticalLinePlugin);
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function downsample(arr, maxPts = 2000) {
+  if (arr.length <= maxPts) return arr;
+  const step = arr.length / maxPts;
+  const out = [];
+  for (let i = 0; i < maxPts; i++) out.push(arr[Math.round(i * step)]);
+  return out;
+}
+
+function formatTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1).padStart(4, '0');
+  return `${m}:${sec}`;
+}
+
+function csvEscape(v) {
+  const s = v == null ? '' : String(v).replace(/"/g, '""');
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+}
+
+// ── Folder detection ─────────────────────────────────────────────────────────
+openBtn.addEventListener('click', async () => {
+  if (!window.showDirectoryPicker) {
+    alert('Your browser does not support the File System Access API.\nPlease open this page in Chrome or Edge.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'read' });
+    await detectFolder(handle);
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error('Folder open error:', err);
+  }
+});
+
+async function detectFolder(handle) {
+  const entries = {};
+  for await (const [name, h] of handle.entries()) entries[name] = h;
+
+  // Single activity folder?
+  if ('video.mp4' in entries) {
+    rideSelectWrap.style.display = 'none';
+    await tryLoadAnnotations(handle);
+    await loadRide(handle, handle.name);
+    return;
+  }
+
+  // Parent folder with ride subfolders?
+  const subs = Object.entries(entries)
+    .filter(([, h]) => h.kind === 'directory')
+    .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+
+  if (subs.length === 0) {
+    alert(
+      'No activities found.\n\n' +
+      'Please select either:\n' +
+      '• A single activity folder containing video.mp4 + telemetry.csv\n' +
+      '• A parent folder containing activity subfolders'
+    );
+    return;
+  }
+
+  rideHandles = Object.fromEntries(subs);
+  rideSelectEl.innerHTML = subs.map(([n]) => `<option value="${n}">${n}</option>`).join('');
+  rideSelectWrap.style.display = 'flex';
+
+  rideSelectEl.onchange = () => {
+    const n = rideSelectEl.value;
+    if (rideHandles[n]) loadRide(rideHandles[n], n);
+  };
+
+  await tryLoadAnnotations(handle);
+  await loadRide(subs[0][1], subs[0][0]);
+}
+
+// ── Ride loading ─────────────────────────────────────────────────────────────
+async function loadRide(dirHandle, name) {
+  welcomeEl.style.display  = 'none';
+  loadingEl.style.display  = 'flex';
+  appEl.classList.remove('visible');
+  currentRideLabel.textContent = name;
+  currentRide = name;
+
+  try {
+    // Free previous blob URL
+    if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+
+    // Video
+    const vFile = await (await dirHandle.getFileHandle('video.mp4')).getFile();
+    blobUrl = URL.createObjectURL(vFile);
+    videoEl.src = blobUrl;
+
+    // Telemetry
+    const tFile = await (await dirHandle.getFileHandle('telemetry.csv')).getFile();
+    const raw = parseCSV(await tFile.text());
+    telemetryByActivity[name] = raw;   // store for PDF export
+    renderCharts(raw);
+
+    // Context (optional)
+    try {
+      const cFile = await (await dirHandle.getFileHandle('context.md')).getFile();
+      contextTextEl.textContent = await cFile.text();
+      contextCard.style.display = 'block';
+    } catch { contextCard.style.display = 'none'; }
+
+    annotTsEl.value = 0;
+    renderAnnotationList();
+    renderClipList();
+    loadingEl.style.display = 'none';
+    appEl.classList.add('visible');
+    viewToggleEl.style.display = 'flex';
+
+  } catch (err) {
+    loadingEl.style.display = 'none';
+    welcomeEl.style.display = 'flex';
+    alert(
+      `Could not load "${name}".\n\n` +
+      `Make sure the folder contains:\n` +
+      `  • video.mp4\n` +
+      `  • telemetry.csv\n\n` +
+      `Error: ${err.message}`
+    );
+  }
+}
+
+// ── View toggle ───────────────────────────────────────────────────────────────
+const leftPanel  = document.querySelector('.left-panel');
+const rightPanel = document.querySelector('.right-panel');
+
+viewToggleEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-view]');
+  if (!btn) return;
+  viewToggleEl.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const view = btn.dataset.view;
+  videoEl.style.display      = view === 'telemetry' ? 'none' : 'block';
+  rightPanel.style.display   = view === 'video'     ? 'none' : 'flex';
+  // Resize charts after panel change so they fill their container correctly
+  if (view !== 'video') {
+    setTimeout(() => {
+      if (accelChart) accelChart.resize();
+      if (gyroChart)  gyroChart.resize();
+    }, 50);
+  }
+});
+
+// ── CSV parser ────────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  // Header: TIMESTAMP,ACCL_x,ACCL_y,ACCL_z,GYRO_x,GYRO_y,GYRO_z
+  // Use case-insensitive, underscore-tolerant matching.
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const idx = (pat) => header.findIndex(h => pat.test(h));
+
+  const iTs = idx(/timestamp/);
+  const iAx = idx(/acc.*x/);
+  const iAy = idx(/acc.*y/);
+  const iAz = idx(/acc.*z/);
+  const iGx = idx(/gyro.*x/);
+  const iGy = idx(/gyro.*y/);
+  const iGz = idx(/gyro.*z/);
+
+  if ([iTs, iAx, iAy, iAz, iGx, iGy, iGz].some(i => i === -1)) {
+    throw new Error(
+      `Could not find required columns in telemetry.csv.\n` +
+      `Expected: TIMESTAMP, ACCL_x, ACCL_y, ACCL_z, GYRO_x, GYRO_y, GYRO_z\n` +
+      `Found:    ${lines[0]}`
+    );
+  }
+
+  const samples = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    if (cols.length < 7) continue;
+    const t = parseFloat(cols[iTs]);
+    if (isNaN(t)) continue;
+    samples.push({
+      t,
+      acc_x:  parseFloat(cols[iAx]),
+      acc_y:  parseFloat(cols[iAy]),
+      acc_z:  parseFloat(cols[iAz]),
+      gyro_x: parseFloat(cols[iGx]),
+      gyro_y: parseFloat(cols[iGy]),
+      gyro_z: parseFloat(cols[iGz]),
+    });
+  }
+
+  return normalizeTimestamps(samples);
+}
+
+function normalizeTimestamps(samples) {
+  if (samples.length === 0) return samples;
+
+  // Shift so first sample is t = 0
+  const offset = samples[0].t;
+  const shifted = samples.map(s => ({ ...s, t: s.t - offset }));
+
+  // Auto-detect unit: if the final timestamp is implausibly large for seconds
+  // (i.e. > 3 hours), assume milliseconds; if > 3 million, assume microseconds.
+  const tMax = shifted[shifted.length - 1].t;
+  let scale = 1;
+  if      (tMax > 3_000_000) scale = 1_000_000;  // µs → s
+  else if (tMax > 10_800)    scale = 1_000;       // ms → s
+
+  if (scale === 1) return shifted;
+  return shifted.map(s => ({ ...s, t: s.t / scale }));
+}
+
+// ── Chart rendering ───────────────────────────────────────────────────────────
+function renderCharts(data) {
+  if (accelChart) { accelChart.destroy(); accelChart = null; }
+  if (gyroChart)  { gyroChart.destroy();  gyroChart = null;  }
+
+  const raw = Array.isArray(data) ? data : (data.samples ?? data);
+  if (!Array.isArray(raw) || raw.length === 0) {
+    console.warn('telemetry.csv: no samples found');
+    return;
+  }
+  const samples  = downsample(raw, 2000);
+  const duration = samples[samples.length - 1]?.t ?? 60;
+
+  const commonOpts = (yLabel) => ({
+    animation:           false,
+    responsive:          true,
+    maintainAspectRatio: false,
+    interaction:         { mode: 'none' },
+    scales: {
+      x: {
+        type: 'linear',
+        min: 0,
+        max: duration,
+        ticks: {
+          maxTicksLimit: 8,
+          callback: v => formatTime(v),
+          font: { size: 10 },
+        },
+        grid: { color: 'rgba(0,0,0,0.06)' },
+      },
+      y: {
+        title: { display: true, text: yLabel, font: { size: 10 } },
+        ticks: { font: { size: 10 }, maxTicksLimit: 5 },
+        grid:  { color: 'rgba(0,0,0,0.06)' },
+      },
+    },
+    plugins: {
+      legend: { labels: { font: { size: 10 }, boxWidth: 10, padding: 8 } },
+      tooltip: { enabled: false },
+      verticalLine: { x: null },
+    },
+  });
+
+  const toXY = (field) => samples.map(s => ({ x: s.t, y: s[field] }));
+
+  accelChart = new Chart(accelCanvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'X', data: toXY('acc_x'), borderColor: '#e74c3c', pointRadius: 0, borderWidth: 1 },
+        { label: 'Y', data: toXY('acc_y'), borderColor: '#27ae60', pointRadius: 0, borderWidth: 1 },
+        { label: 'Z', data: toXY('acc_z'), borderColor: '#2980b9', pointRadius: 0, borderWidth: 1 },
+      ],
+    },
+    options: commonOpts('m/s²'),
+  });
+
+  gyroChart = new Chart(gyroCanvas, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'X', data: toXY('gyro_x'), borderColor: '#e67e22', pointRadius: 0, borderWidth: 1 },
+        { label: 'Y', data: toXY('gyro_y'), borderColor: '#16a085', pointRadius: 0, borderWidth: 1 },
+        { label: 'Z', data: toXY('gyro_z'), borderColor: '#8e44ad', pointRadius: 0, borderWidth: 1 },
+      ],
+    },
+    options: commonOpts('rad/s'),
+  });
+
+  // Correct x-axis max once video duration is known
+  videoEl.addEventListener('loadedmetadata', () => {
+    const dur = videoEl.duration;
+    if (isFinite(dur)) {
+      accelChart.options.scales.x.max = dur;
+      accelChart.update('none');
+      gyroChart.options.scales.x.max = dur;
+      gyroChart.update('none');
+    }
+  }, { once: true });
+
+  addChartSeek(accelChart, accelCanvas);
+  addChartSeek(gyroChart,  gyroCanvas);
+}
+
+// ── Video ↔ chart synchronisation ─────────────────────────────────────────────
+videoEl.addEventListener('timeupdate', () => {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    const t = videoEl.currentTime;
+    if (accelChart) { accelChart.options.plugins.verticalLine.x = t; accelChart.update('none'); }
+    if (gyroChart)  { gyroChart.options.plugins.verticalLine.x  = t; gyroChart.update('none');  }
+    if (document.activeElement !== annotTsEl) annotTsEl.value = t.toFixed(1);
+    rafPending = false;
+  });
+});
+
+function addChartSeek(chart, canvas) {
+  canvas.addEventListener('click', (e) => {
+    if (!chart?.chartArea) return;
+    const rect = canvas.getBoundingClientRect();
+    const x    = e.clientX - rect.left;
+    const { left, right } = chart.chartArea;
+    if (x < left || x > right) return;
+    const t = chart.scales.x.getValueForPixel(x);
+    if (t != null && t >= 0) videoEl.currentTime = t;
+  });
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+document.querySelector('.tab-bar').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  const tab = btn.dataset.tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active', 'active-clips'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add(tab === 'clips' ? 'active-clips' : 'active');
+  document.getElementById(tab === 'annotate' ? 'tabAnnotate' : 'tabClips').classList.add('active');
+});
+
+// ── Annotations ───────────────────────────────────────────────────────────────
+
+addAnnotBtn.addEventListener('click', () => {
+  const desc = annotDescEl.value.trim();
+  if (!desc) { alert('Please write a description before saving.'); return; }
+
+  annotations.push({
+    id:     Date.now(),
+    ride:   currentRide,
+    ts:     parseFloat(annotTsEl.value) || 0,
+    signal: annotSignalEl.value,
+    desc,
+    interp: annotInterpEl.value.trim(),
+    gap:    annotGapEl.value.trim(),
+  });
+
+  renderAnnotationList();
+  // Clear fields (keep timestamp and ride)
+  annotSignalEl.value = '';
+  annotDescEl.value   = '';
+  annotInterpEl.value = '';
+  annotGapEl.value    = '';
+});
+
+function renderAnnotationList() {
+  annotCountEl.textContent = annotations.length;
+
+  // Per-ride summary chips
+  const rideCounts = {};
+  annotations.forEach(a => { rideCounts[a.ride] = (rideCounts[a.ride] || 0) + 1; });
+  annotRideSummaryEl.innerHTML = Object.entries(rideCounts).map(([ride, n]) =>
+    `<span class="ride-chip ${ride === currentRide ? 'current' : ''}">${ride}: ${n}</span>`
+  ).join('');
+
+  if (annotations.length === 0) {
+    annotListEl.innerHTML = '<p class="annot-empty">No annotations yet. Annotations persist when you switch activities — annotate here, switch activity, continue.</p>';
+    return;
+  }
+
+  annotListEl.innerHTML = annotations.map(a => `
+    <div class="annot-item ${a.ride !== currentRide ? 'other-ride' : ''}" data-id="${a.id}">
+      <button class="delete-btn" data-id="${a.id}" title="Delete">×</button>
+      <div class="annot-meta">
+        <button class="annot-seek" data-t="${a.ts}" ${a.ride !== currentRide ? 'disabled title="Switch to \'' + a.ride + '\' to seek this annotation"' : ''}>${formatTime(a.ts)}</button>
+        <span>${a.ride}</span>
+        ${a.signal ? `<span>· ${a.signal}</span>` : ''}
+      </div>
+      ${a.desc   ? `<div class="annot-desc"><span class="annot-label">Desc:</span> ${a.desc}</div>`   : ''}
+      ${a.interp ? `<div class="annot-interp"><span class="annot-label">Interp:</span> ${a.interp}</div>` : ''}
+      ${a.gap    ? `<div class="annot-gap"><span class="annot-label">Gap:</span> ${a.gap}</div>`       : ''}
+    </div>
+  `).join('');
+
+  annotListEl.querySelectorAll('.annot-seek').forEach(btn => {
+    btn.addEventListener('click', () => { videoEl.currentTime = parseFloat(btn.dataset.t); });
+  });
+  annotListEl.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      annotations = annotations.filter(a => a.id !== Number(btn.dataset.id));
+      renderAnnotationList();
+    });
+  });
+}
+
+// ── Annotation import ─────────────────────────────────────────────────────────
+
+// Split one CSV line respecting double-quoted fields.
+function splitCSVLine(line) {
+  const cols = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (ch === ',' && !inQ) {
+      cols.push(cur); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  cols.push(cur);
+  return cols;
+}
+
+function parseAnnotationsCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+  // Accept both 'activity' (current) and 'ride' (legacy)
+  const iAct   = header.findIndex(h => h === 'activity' || h === 'ride');
+  const iTs    = header.findIndex(h => h.includes('timestamp'));
+  const iSig   = header.indexOf('signal');
+  const iDesc  = header.indexOf('description');
+  const iInter = header.indexOf('interpretation');
+  const iGap   = header.indexOf('gap');
+
+  if ([iAct, iTs, iDesc].some(i => i === -1)) return [];
+
+  const result = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i]);
+    if (cols.length < 4) continue;
+    result.push({
+      id:     Date.now() + i,
+      ride:   cols[iAct]  ?? '',
+      ts:     parseFloat(cols[iTs]) || 0,
+      signal: iSig  >= 0 ? (cols[iSig]  ?? '') : '',
+      desc:   iDesc >= 0 ? (cols[iDesc] ?? '') : '',
+      interp: iInter >= 0 ? (cols[iInter] ?? '') : '',
+      gap:    iGap  >= 0 ? (cols[iGap]  ?? '') : '',
+    });
+  }
+  return result;
+}
+
+async function tryLoadAnnotations(dirHandle) {
+  try {
+    const file = await (await dirHandle.getFileHandle('annotations.csv')).getFile();
+    const loaded = parseAnnotationsCSV(await file.text());
+    if (loaded.length > 0) {
+      annotations = loaded;
+    }
+  } catch {
+    // No annotations.csv found — start fresh.
+  }
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────────
+exportBtn.addEventListener('click', () => {
+  if (annotations.length === 0) { alert('No annotations to export yet.'); return; }
+
+  const header = ['activity', 'timestamp_s', 'signal', 'description', 'interpretation', 'gap'];
+  const rows   = annotations.map(a =>
+    [a.ride, a.ts, a.signal, a.desc, a.interp, a.gap].map(csvEscape).join(',')
+  );
+  const csv  = [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const link = Object.assign(document.createElement('a'), {
+    href:     url,
+    download: 'annotations.csv',
+  });
+  link.click();
+  URL.revokeObjectURL(url);
+});
+
+// ── Clips ─────────────────────────────────────────────────────────────────────
+
+setClipStartBtn.addEventListener('click', () => {
+  clipStartEl.value = videoEl.currentTime.toFixed(1);
+});
+setClipEndBtn.addEventListener('click', () => {
+  clipEndEl.value = videoEl.currentTime.toFixed(1);
+});
+
+addClipBtn.addEventListener('click', async () => {
+  const name   = clipNameEl.value.trim();
+  const startT = parseFloat(clipStartEl.value);
+  const endT   = parseFloat(clipEndEl.value);
+
+  if (!name)              { alert('Please enter a clip name.'); return; }
+  if (isNaN(startT) || isNaN(endT)) { alert('Please set start and end times.'); return; }
+  if (endT <= startT)     { alert('End time must be after start time.'); return; }
+
+  // Capture all images now while this activity is loaded
+  addClipBtn.disabled    = true;
+  addClipBtn.textContent = 'Capturing…';
+  try {
+    const midT        = startT + (endT - startT) / 2;
+    const frameDataUrl = await captureVideoFrame(midT);
+    const actSamples   = telemetryByActivity[currentRide] ?? [];
+    const accelImg     = renderChartImageForClip('accel', actSamples, startT, endT);
+    const gyroImg      = renderChartImageForClip('gyro',  actSamples, startT, endT);
+
+    clips.push({ id: Date.now(), name, activity: currentRide, startT, endT,
+                 frameDataUrl, accelImg, gyroImg });
+    clipNameEl.value = '';
+    renderClipList();
+  } finally {
+    addClipBtn.disabled    = false;
+    addClipBtn.textContent = 'Add clip';
+  }
+});
+
+function renderClipList() {
+  clipCountEl.textContent = clips.length;
+  if (clips.length === 0) {
+    clipListEl.innerHTML = '<p class="annot-empty">No clips yet. Select a timeframe above and add a clip.</p>';
+    return;
+  }
+
+  clipListEl.innerHTML = clips.map(c => {
+    const isCurrentActivity = c.activity === currentRide;
+    const thumb = c.frameDataUrl
+      ? `<img class="clip-thumb" src="${c.frameDataUrl}" alt="clip frame">`
+      : '';
+    return `
+      <div class="clip-item ${isCurrentActivity ? '' : 'other-ride'}" data-id="${c.id}">
+        <button class="delete-btn" data-id="${c.id}" title="Delete">×</button>
+        <div class="clip-name">${c.name}</div>
+        <div class="clip-meta">
+          <span>${c.activity}</span>
+          <button class="annot-seek" data-t="${c.startT}"
+            ${!isCurrentActivity ? 'disabled title="Switch to this activity to seek"' : ''}>
+            ▶ ${formatTime(c.startT)}
+          </button>
+          <span>→ ${formatTime(c.endT)}</span>
+          <span>(${(c.endT - c.startT).toFixed(0)}s)</span>
+        </div>
+        ${thumb}
+      </div>
+    `;
+  }).join('');
+
+  clipListEl.querySelectorAll('.annot-seek').forEach(btn => {
+    btn.addEventListener('click', () => { videoEl.currentTime = parseFloat(btn.dataset.t); });
+  });
+  clipListEl.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      clips = clips.filter(c => c.id !== Number(btn.dataset.id));
+      renderClipList();
+    });
+  });
+}
+
+// ── Video frame capture ───────────────────────────────────────────────────────
+// Seeks the video to time t, waits for the frame to be ready, returns a JPEG dataURL.
+function captureVideoFrame(t) {
+  return new Promise((resolve) => {
+    const draw = () => {
+      const c = document.createElement('canvas');
+      c.width  = videoEl.videoWidth  || 1280;
+      c.height = videoEl.videoHeight || 720;
+      c.getContext('2d').drawImage(videoEl, 0, 0);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    // If already close enough, capture immediately
+    if (Math.abs(videoEl.currentTime - t) < 0.15) {
+      draw();
+    } else {
+      videoEl.addEventListener('seeked', draw, { once: true });
+      videoEl.currentTime = t;
+    }
+  });
+}
+
+// ── Offscreen chart image for PDF ─────────────────────────────────────────────
+// Renders an offscreen Chart.js chart for the given time range and returns a PNG dataURL.
+function renderChartImageForClip(type, samples, startT, endT) {
+  const slice = samples.filter(s => s.t >= startT && s.t <= endT);
+  if (slice.length === 0) return null;
+
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width  = 900;
+  offCanvas.height = 220;
+  offCanvas.style.cssText = 'position:fixed;left:-9999px;top:-9999px;visibility:hidden;';
+  document.body.appendChild(offCanvas);
+
+  // White background (Chart.js canvas is transparent by default)
+  const ctx2d = offCanvas.getContext('2d');
+  ctx2d.fillStyle = '#ffffff';
+  ctx2d.fillRect(0, 0, offCanvas.width, offCanvas.height);
+
+  const toXY = (field) => slice.map(s => ({ x: s.t, y: s[field] }));
+
+  let datasets, yLabel;
+  if (type === 'accel') {
+    datasets = [
+      { label: 'X', data: toXY('acc_x'),  borderColor: '#e74c3c', pointRadius: 0, borderWidth: 1.5 },
+      { label: 'Y', data: toXY('acc_y'),  borderColor: '#27ae60', pointRadius: 0, borderWidth: 1.5 },
+      { label: 'Z', data: toXY('acc_z'),  borderColor: '#2980b9', pointRadius: 0, borderWidth: 1.5 },
+    ];
+    yLabel = 'm/s²';
+  } else {
+    datasets = [
+      { label: 'X', data: toXY('gyro_x'), borderColor: '#e67e22', pointRadius: 0, borderWidth: 1.5 },
+      { label: 'Y', data: toXY('gyro_y'), borderColor: '#16a085', pointRadius: 0, borderWidth: 1.5 },
+      { label: 'Z', data: toXY('gyro_z'), borderColor: '#8e44ad', pointRadius: 0, borderWidth: 1.5 },
+    ];
+    yLabel = 'rad/s';
+  }
+
+  const chart = new Chart(offCanvas, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      animation: false,
+      responsive: false,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type:  'linear',
+          min:   startT,
+          max:   endT,
+          ticks: { maxTicksLimit: 8, callback: v => formatTime(v), font: { size: 11 } },
+          grid:  { color: 'rgba(0,0,0,0.06)' },
+        },
+        y: {
+          title: { display: true, text: yLabel, font: { size: 11 } },
+          ticks: { font: { size: 11 }, maxTicksLimit: 5 },
+          grid:  { color: 'rgba(0,0,0,0.06)' },
+        },
+      },
+      plugins: {
+        legend:  { labels: { font: { size: 11 }, boxWidth: 10, padding: 8 } },
+        tooltip: { enabled: false },
+      },
+    },
+  });
+
+  const dataUrl = offCanvas.toDataURL('image/png');
+  chart.destroy();
+  document.body.removeChild(offCanvas);
+  return dataUrl;
+}
+
+// ── PDF export ────────────────────────────────────────────────────────────────
+exportPdfBtn.addEventListener('click', () => {
+  if (clips.length === 0)  { alert('No clips to export yet.'); return; }
+  if (!window.jspdf) {
+    alert('PDF library not loaded. Check your internet connection and reload the page.');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc      = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const margin   = 10;
+  const pageW    = 210;
+  const cW       = pageW - 2 * margin;   // content width
+
+  for (let i = 0; i < clips.length; i++) {
+      if (i > 0) doc.addPage();
+      const clip = clips[i];
+      let y = margin;
+
+      // ── Header band ──
+      doc.setFillColor(26, 37, 53);
+      doc.rect(margin, y, cW, 13, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text(clip.name, margin + 3, y + 9);
+      y += 17;
+
+      // ── Meta line ──
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Activity: ${clip.activity}   ·   ${formatTime(clip.startT)} – ${formatTime(clip.endT)}   ·   ${(clip.endT - clip.startT).toFixed(0)}s`,
+        margin, y
+      );
+      y += 6;
+
+      // ── Video snapshot (pre-captured at clip creation) ──
+      const imgH = cW * (9 / 16);
+      if (clip.frameDataUrl) {
+        doc.addImage(clip.frameDataUrl, 'JPEG', margin, y, cW, imgH);
+      } else {
+        doc.setDrawColor(200, 200, 200);
+        doc.setFillColor(245, 245, 245);
+        doc.rect(margin, y, cW, imgH, 'FD');
+      }
+      y += imgH + 4;
+
+      // ── Telemetry charts (pre-rendered at clip creation) ──
+      const chartH = 46;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(80, 80, 80);
+
+      if (clip.accelImg) {
+        doc.text('Accelerometer (m/s²)', margin, y + 4);
+        y += 6;
+        doc.addImage(clip.accelImg, 'PNG', margin, y, cW, chartH);
+        y += chartH + 4;
+      }
+      if (clip.gyroImg) {
+        doc.text('Gyroscope (rad/s)', margin, y + 4);
+        y += 6;
+        doc.addImage(clip.gyroImg, 'PNG', margin, y, cW, chartH);
+        y += chartH + 4;
+      }
+
+      // ── Page footer ──
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(180, 180, 180);
+      doc.text(`Clip ${i + 1} of ${clips.length}  ·  T5.2 Multimodal Viewer`, margin, 290);
+    }
+
+  doc.save('clip_compilation.pdf');
+});
+</script>
+</body>
+</html>
