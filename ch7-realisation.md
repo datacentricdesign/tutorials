@@ -12,4 +12,4 @@ These tutorials accompany **Chapter 7** of the DCD textbook. They cover the full
 |----------|-------|
 | [T7.1](T7.1) | Setting Up a Sensor Probe with ESP32 |
 | [T7.2](T7.2) | A Solar Energy Technology Probe: From Simulation to Live |
-| [T7.4](T7.4) | End-to-End Stack: Sensor → Data Foundry → Interface |
+| [T7.3](T7.3) | End-to-End Stack: Sensor → Data Foundry → Interface |
