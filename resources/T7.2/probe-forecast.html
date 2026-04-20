@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Solar Generation Probe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0efe9;
+      color: #2c2c2a;
+      padding: 28px 16px;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #999;
+      margin-bottom: 20px;
+    }
+
+    /* ---- Shared card ---- */
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+
+    .card-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #bbb;
+      margin-bottom: 14px;
+    }
+
+    /* ---- Now panel ----
+         #current-index and #current-bar are placeholders here.
+         Step 5 of the tutorial adds a script that populates them
+         with live readings from the Data Foundry IoT Dataset.     ---- */
+    .now-value-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    #current-index {
+      font-size: 3.8rem;
+      font-weight: 700;
+      line-height: 1;
+      color: #2c2c2a;
+    }
+
+    .now-unit {
+      font-size: 1rem;
+      color: #bbb;
+    }
+
+    .now-track {
+      margin-top: 14px;
+      height: 7px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    #current-bar {
+      height: 100%;
+      width: 0%;
+      background: #e8900a;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    .now-hint {
+      margin-top: 10px;
+      font-size: 0.72rem;
+      color: #ccc;
+      font-style: italic;
+    }
+
+    /* ---- Forecast chart ---- */
+    .forecast-date {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-bottom: 18px;
+    }
+
+    .chart {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 5px;
+      padding: 1px 0;
+    }
+
+    /* The row matching the current wall-clock hour is highlighted. */
+    .bar-row.now {
+      background: #f5f4ee;
+      margin: 0 -8px;
+      padding: 2px 8px;
+    }
+
+    .bar-label {
+      font-size: 0.68rem;
+      color: #ccc;
+      width: 38px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .bar-row.now .bar-label {
+      color: #555;
+      font-weight: 700;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 13px;
+      background: #f0efe9;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    .bar-value {
+      font-size: 0.68rem;
+      color: #ccc;
+      width: 22px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .bar-row.now .bar-value {
+      color: #555;
+      font-weight: 600;
+    }
+
+    /* ---- Summary ---- */
+    .summary {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #f0efe9;
+      font-size: 0.82rem;
+      color: #888;
+    }
+
+    .summary strong { color: #2c2c2a; }
+
+    /* ---- Error state ---- */
+    .error-msg {
+      font-size: 0.82rem;
+      color: #b84040;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Solar Energy Probe</h1>
+
+  <!-- =======================================================
+       NOW PANEL
+       -------------------------------------------------------
+       The span#current-index and div#current-bar start empty.
+       Step 5 of tutorial T7.2 adds a script block that calls
+       the Data Foundry JS client and sets:
+         document.getElementById('current-index').textContent = index;
+         document.getElementById('current-bar').style.width   = index + '%';
+       Do not rename these ids.
+       ======================================================= -->
+  <div class="card">
+    <div class="card-label">Generating now</div>
+    <div class="now-value-row">
+      <span id="current-index">—</span>
+      <span class="now-unit">/ 100</span>
+    </div>
+    <div class="now-track">
+      <div id="current-bar"></div>
+    </div>
+    <p class="now-hint">Live sensor reading — available after Step 5.</p>
+  </div>
+
+  <!-- =======================================================
+       FORECAST PANEL
+       ======================================================= -->
+  <div class="card">
+    <div class="card-label">Today's generation forecast</div>
+    <p class="forecast-date" id="forecast-date"></p>
+    <div class="chart" id="chart"></div>
+    <p class="summary" id="summary"></p>
+  </div>
+
+
+  <script>
+    // =========================================================================
+    // CONFIGURE THIS to switch data sources.
+    //
+    // null (default) — use the inline sample data below. Works immediately
+    //   when opening the file locally or after uploading to Data Foundry,
+    //   with no extra files needed.
+    //
+    // URL string — fetch a CSV from that address instead:
+    //   Option A: relative path to a CSV in the same Data Foundry Existing
+    //             Dataset (both files must be uploaded to the same dataset):
+    //             const CSV_URL = './weather_sample.csv';
+    //   Option B: replace loadData() below with the Open-Meteo fetch from
+    //             the tutorial to use a live weather forecast instead.
+    // =========================================================================
+    const CSV_URL = null;
+
+    // =========================================================================
+    // INLINE SAMPLE DATA
+    // One day (24 h) at Delft, summer, generated by:
+    //   python3 generate_solar_data.py --lat 52.0 --lon 4.36 --season summer --seed 42
+    // Replace with output from your own generate_solar_data.py run.
+    // =========================================================================
+    const INLINE_CSV = `timestamp,cloud_cover,uv_index,generation_index
+2025-06-21T00:00,48.3,0.0,0.0
+2025-06-21T01:00,46.6,0.0,0.0
+2025-06-21T02:00,45.8,0.0,0.0
+2025-06-21T03:00,55.3,0.0,0.0
+2025-06-21T04:00,53.3,0.52,2.2
+2025-06-21T05:00,34.6,1.57,9.3
+2025-06-21T06:00,40.8,2.68,14.4
+2025-06-21T07:00,38.9,3.76,20.9
+2025-06-21T08:00,37.8,4.75,26.9
+2025-06-21T09:00,40.9,5.57,29.9
+2025-06-21T10:00,45.1,6.17,30.8
+2025-06-21T11:00,60.3,6.52,23.5
+2025-06-21T12:00,67.4,6.58,19.5
+2025-06-21T13:00,66.9,6.35,19.1
+2025-06-21T14:00,56.0,5.85,23.4
+2025-06-21T15:00,43.0,5.11,26.5
+2025-06-21T16:00,47.1,4.19,20.1
+2025-06-21T17:00,63.9,3.14,10.3
+2025-06-21T18:00,63.0,2.03,6.8
+2025-06-21T19:00,60.4,0.95,3.4
+2025-06-21T20:00,65.9,0.0,0.0
+2025-06-21T21:00,46.3,0.0,0.0
+2025-06-21T22:00,43.1,0.0,0.0
+2025-06-21T23:00,50.2,0.0,0.0`;
+
+    // Current wall-clock hour (0–23). Used to highlight the matching row.
+    const NOW_HOUR = new Date().getHours();
+
+
+    // -------------------------------------------------------------------------
+    // Colour scale: grey (index 0) → yellow (50) → amber (100)
+    //
+    // Mirrors the visual language of the "When Looking Out of the Window" Dial
+    // probe: low generation is neutral, high generation is warm and inviting.
+    // -------------------------------------------------------------------------
+    function indexToColor(v) {
+      if (v <= 0) return '#d8d8d4';
+
+      if (v <= 50) {                       // grey → yellow
+        const t = v / 50;
+        const r = Math.round(210 + (245 - 210) * t);
+        const g = Math.round(210 + (197 - 210) * t);
+        const b = Math.round(205 + ( 24 - 205) * t);
+        return `rgb(${r},${g},${b})`;
+      }
+                                           // yellow → amber
+      const t = (v - 50) / 50;
+      const r = Math.round(245 + (232 - 245) * t);
+      const g = Math.round(197 + (144 - 197) * t);
+      const b = Math.round( 24 + ( 10 -  24) * t);
+      return `rgb(${r},${g},${b})`;
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Parse CSV text → array of row objects.
+    // Expects headers: timestamp, cloud_cover, uv_index, generation_index
+    // -------------------------------------------------------------------------
+    function parseCSV(text) {
+      const lines   = text.trim().split('\n');
+      const headers = lines[0].split(',').map(h => h.trim());
+
+      return lines.slice(1).map(line => {
+        const cells = line.split(',');
+        const row   = {};
+        headers.forEach((h, i) => { row[h] = (cells[i] ?? '').trim(); });
+
+        row.generation_index = parseFloat(row.generation_index) || 0;
+        row.uv_index         = parseFloat(row.uv_index)         || 0;
+        // Extract hour from 'YYYY-MM-DDTHH:MM'
+        row.hour = row.timestamp ? parseInt(row.timestamp.slice(11, 13), 10) : 0;
+        return row;
+      });
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Render the 24-hour forecast chart.
+    //
+    // Takes the first 24 rows of the CSV (one full day). If your CSV has
+    // multiple days and you want to show a specific day, filter rows here
+    // before passing them to this function.
+    // -------------------------------------------------------------------------
+    function renderChart(rows) {
+      const day  = rows.slice(0, 24);
+      const date = (day[0]?.timestamp ?? '').slice(0, 10);
+
+      document.getElementById('forecast-date').textContent = date;
+
+      const chartEl   = document.getElementById('chart');
+      const summaryEl = document.getElementById('summary');
+      chartEl.innerHTML = '';
+
+      // Find the peak generation row for the summary line.
+      const peak = day.reduce(
+        (best, r) => (r.generation_index > best.generation_index ? r : best),
+        day[0]
+      );
+
+      day.forEach(row => {
+        const gi    = row.generation_index;
+        const isNow = row.hour === NOW_HOUR;
+
+        const rowEl = document.createElement('div');
+        rowEl.className = 'bar-row' + (isNow ? ' now' : '');
+
+        // Hour label
+        const label = document.createElement('span');
+        label.className   = 'bar-label';
+        label.textContent = String(row.hour).padStart(2, '0') + ':00';
+
+        // Bar track + coloured fill
+        const track = document.createElement('div');
+        track.className = 'bar-track';
+        const fill = document.createElement('div');
+        fill.className        = 'bar-fill';
+        fill.style.width      = gi + '%';
+        fill.style.background = indexToColor(gi);
+        track.appendChild(fill);
+
+        // Numeric value (hidden at zero — night hours stay visually clean)
+        const val = document.createElement('span');
+        val.className   = 'bar-value';
+        val.textContent = gi > 0 ? Math.round(gi) : '';
+
+        rowEl.append(label, track, val);
+        chartEl.appendChild(rowEl);
+      });
+
+      // Summary line
+      if (peak && peak.generation_index > 0) {
+        const peakTime = String(peak.hour).padStart(2, '0') + ':00';
+        summaryEl.innerHTML =
+          `Peak expected at <strong>${peakTime}</strong> &mdash; ` +
+          `index <strong>${Math.round(peak.generation_index)}</strong>`;
+      } else {
+        summaryEl.textContent = 'No solar generation expected today.';
+      }
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Load data and render.
+    // Uses INLINE_CSV when CSV_URL is null; fetches from CSV_URL otherwise.
+    // -------------------------------------------------------------------------
+    async function loadData() {
+      if (CSV_URL === null) {
+        renderChart(parseCSV(INLINE_CSV));
+        return;
+      }
+      try {
+        const resp = await fetch(CSV_URL);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+        const rows = parseCSV(text);
+        if (rows.length === 0) throw new Error('CSV parsed to zero rows — check the file format');
+        renderChart(rows);
+      } catch (err) {
+        document.getElementById('chart').innerHTML =
+          `<p class="error-msg">Could not load forecast data from <code>${CSV_URL}</code>.<br>` +
+          `${err.message}<br><br>` +
+          `To use inline sample data instead, set <code>const CSV_URL = null;</code></p>`;
+      }
+    }
+
+    loadData();
+  </script>
+
+</body>
+</html>
